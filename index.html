@@ -16,10 +16,17 @@
 <script type="module">
 import{initializeApp}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import{getFirestore,collection,doc,getDoc,getDocs,setDoc,updateDoc,query,where}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import{getAuth,createUserWithEmailAndPassword,signInWithEmailAndPassword,signOut,onAuthStateChanged,sendPasswordResetEmail}from"https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 const cfg={apiKey:"AIzaSyCRjxHqv5WOslB5FDgtkpUhsaO8aqlLAwA",authDomain:"efikcoin-admin.firebaseapp.com",projectId:"efikcoin-admin",storageBucket:"efikcoin-admin.firebasestorage.app",messagingSenderId:"229956311964",appId:"1:229956311964:web:44cdecfeb1f069bc7f4659"};
-const app=initializeApp(cfg);const db=getFirestore(app);
+const app=initializeApp(cfg);const db=getFirestore(app);const auth=getAuth(app);
 window.__fb={db,collection,doc,getDoc,getDocs,setDoc,updateDoc,query,where};
+window.__auth=auth;
 window.__fbReady=true;window.dispatchEvent(new Event("fb-ready"));
+// Auth state listener
+onAuthStateChanged(auth,user=>{
+  window.__fbUser=user;
+  window.dispatchEvent(new CustomEvent('auth-changed',{detail:user}));
+});
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;800;900&family=Syne:wght@400;600;700;800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet"/>
@@ -80,16 +87,16 @@ input,select,textarea{font-family:inherit}
 .sec-sub{color:var(--muted);font-size:.88rem;max-width:560px;line-height:1.8;margin-bottom:24px}
 /* Hero coin */
 .hero{text-align:center;padding:48px 0 32px}
-.coin-scene{position:relative;width:230px;height:230px;margin:0 auto 32px;display:flex;align-items:center;justify-content:center}
+.coin-scene{position:relative;width:min(210px,52vw);height:min(210px,52vw);margin:0 auto 24px;display:flex;align-items:center;justify-content:center}
 .geo-ring{position:absolute;border-radius:50%;border:1px solid rgba(212,168,67,.18)}
-.geo-ring-1{width:215px;height:215px;animation:spin 22s linear infinite}
-.geo-ring-2{width:170px;height:170px;animation:spinR 15s linear infinite;border-style:dashed}
-.geo-ring-3{width:130px;height:130px;animation:spin 10s linear infinite}
+.geo-ring-1{width:min(200px,50vw);height:min(200px,50vw);animation:spin 22s linear infinite}
+.geo-ring-2{width:min(158px,39vw);height:min(158px,39vw);animation:spinR 15s linear infinite;border-style:dashed}
+.geo-ring-3{width:min(120px,30vw);height:min(120px,30vw);animation:spin 10s linear infinite}
 .orb{position:absolute;border-radius:50%;top:50%;left:50%;transform-origin:0 0}
 .orb-a{width:10px;height:10px;background:var(--gold);box-shadow:0 0 12px var(--gold);animation:orbitA 5s linear infinite;margin:-5px 0 0 -5px}
 .orb-b{width:8px;height:8px;background:var(--green);box-shadow:0 0 10px var(--green);animation:orbitB 7.5s linear infinite;margin:-4px 0 0 -4px}
 .orb-c{width:7px;height:7px;background:var(--blue);box-shadow:0 0 10px var(--blue);animation:orbitC 12s linear infinite;margin:-3.5px 0 0 -3.5px}
-.coin-core{width:96px;height:96px;border-radius:50%;position:relative;z-index:2;animation:float 4s ease-in-out infinite}
+.coin-core{width:min(88px,22vw);height:min(88px,22vw);border-radius:50%;position:relative;z-index:2;animation:float 4s ease-in-out infinite}
 .coin-ring{position:absolute;inset:0;border-radius:50%;background:conic-gradient(var(--gold-xd),var(--gold-d),var(--gold),var(--gold-l),var(--gold),var(--gold-d),var(--gold-xd));animation:spin 5s linear infinite}
 .coin-img{position:absolute;inset:4px;border-radius:50%;object-fit:cover;z-index:2}
 .coin-fall{position:absolute;inset:4px;border-radius:50%;background:radial-gradient(circle at 35% 35%,var(--gold-l),var(--gold),var(--gold-d));display:flex;align-items:center;justify-content:center;font-family:"Orbitron",monospace;font-size:20px;font-weight:900;color:var(--obs);z-index:2;overflow:hidden}
@@ -306,6 +313,54 @@ canvas.price-chart{width:100%!important;height:160px!important}
 <canvas id="bg-canvas"></canvas>
 <div id="toast-box"></div>
 
+<!-- LOGIN / REGISTER MODAL -->
+<div class="m-ov" id="m-auth">
+  <div class="modal" style="max-width:400px">
+    <div class="m-close" onclick="closeM('m-auth')">✕</div>
+    <div style="text-align:center;margin-bottom:18px">
+      <div style="font-size:36px;margin-bottom:8px">🔐</div>
+      <h3 id="auth-title">Sign In to EFC Wallet</h3>
+      <p class="modal-sub" id="auth-sub">Access your profile, inbox, and community features.</p>
+    </div>
+    <!-- Tab switcher -->
+    <div class="tabs" style="justify-content:center;margin-bottom:18px">
+      <div class="tab active" id="auth-tab-login" onclick="switchAuthMode('login')">Sign In</div>
+      <div class="tab" id="auth-tab-register" onclick="switchAuthMode('register')">Register</div>
+    </div>
+    <!-- Error box -->
+    <div id="auth-err" style="display:none;background:rgba(224,80,80,.08);border:1px solid rgba(224,80,80,.2);border-radius:8px;padding:10px 13px;font-family:'Space Mono',monospace;font-size:9px;color:var(--red-l);margin-bottom:13px"></div>
+    <!-- Register fields (hidden on login) -->
+    <div id="auth-reg-fields">
+      <div class="f-group"><label class="f-lbl">Full Name</label><input class="f-inp" id="auth-name" placeholder="Your full name"/></div>
+      <div class="f-group"><label class="f-lbl">Country</label><input class="f-inp" id="auth-country" placeholder="Nigeria, USA, Ghana..."/></div>
+    </div>
+    <!-- Common fields -->
+    <div class="f-group"><label class="f-lbl">Email Address</label><input class="f-inp" id="auth-email" type="email" placeholder="you@example.com"/></div>
+    <div class="f-group"><label class="f-lbl">Password</label>
+      <div style="position:relative">
+        <input class="f-inp" id="auth-pass" type="password" placeholder="••••••••" style="padding-right:44px"/>
+        <span onclick="togglePassVis()" style="position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:14px" id="auth-eye">👁</span>
+      </div>
+    </div>
+    <button class="btn-g w-full mt-8" id="auth-submit-btn" onclick="submitAuth()">Sign In →</button>
+    <div style="text-align:center;margin-top:14px">
+      <span class="small-lk" onclick="forgotPassword()">Forgot password?</span>
+    </div>
+    <!-- Divider -->
+    <div style="display:flex;align-items:center;gap:10px;margin:16px 0"><div style="flex:1;height:1px;background:var(--bdr)"></div><span style="font-family:'Space Mono',monospace;font-size:8px;color:var(--dim)">OR</span><div style="flex:1;height:1px;background:var(--bdr)"></div></div>
+    <!-- Wallet connect option -->
+    <button class="btn-o w-full" onclick="closeM('m-auth');openM('m-connect')">🦊 Connect Wallet Instead</button>
+    <!-- Signed-in state -->
+    <div id="auth-signed-in" style="display:none;margin-top:14px">
+      <div style="background:rgba(61,214,140,.07);border:1px solid rgba(61,214,140,.2);border-radius:9px;padding:13px;text-align:center">
+        <div style="font-family:'Orbitron',monospace;font-size:.8rem;color:var(--green);margin-bottom:4px">✓ Signed In</div>
+        <div style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted)" id="auth-user-email">—</div>
+        <button class="btn-o mt-8" style="font-size:8.5px;padding:6px 14px;border-color:rgba(224,80,80,.3);color:var(--red-l)" onclick="signOutUser()">Sign Out</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- CONNECT MODAL -->
 <div class="m-ov" id="m-connect">
   <div class="modal">
@@ -361,6 +416,7 @@ canvas.price-chart{width:100%!important;height:160px!important}
       <option value="ko">🇰🇷 KO</option>
     </select>
     <button class="conn-btn" id="conn-btn" onclick="openM('m-connect')" data-i18n="connect">Connect Wallet</button>
+    <button id="auth-btn" onclick="openM('m-auth')" style="background:var(--surf);border:1px solid var(--bdr2);color:var(--muted);font-family:'Space Mono',monospace;font-size:8.5px;padding:8px 13px;border-radius:8px;transition:all .2s;white-space:nowrap" title="Sign In / Register">👤 Sign In</button>
   </div>
 </div>
 <!-- TICKER -->
@@ -387,12 +443,12 @@ canvas.price-chart{width:100%!important;height:160px!important}
     <div class="hero-btns">
       <button class="btn-g" onclick="goPage('dashboard')" data-i18n="btn_launch">🚀 Launch DApp</button>
       <a class="btn-g" href="https://pancakeswap.finance/swap?outputCurrency=0x677Ce9CBa67f7484ea951a12897CE780cFd8fED1" target="_blank" data-i18n="btn_buy">🥞 Buy EFC</a>
-      <a class="btn-o" href="https://efikcoineternalv.github.io/Charity-Empowerment/" target="_blank" data-i18n="btn_charity">🕊️ Charity Portal</a>
+      <a class="btn-o" href="https://charityempowerment.netlify.app/" target="_blank" data-i18n="btn_charity">🕊️ Charity Portal</a>
     </div>
     <div class="addr-strip">
       <div class="addr-chip" onclick="copyTxt('0x677Ce9CBa67f7484ea951a12897CE780cFd8fED1')"><span class="d"></span>Token: 0x677C...fED1 ⎘</div>
-      <div class="addr-chip" onclick="copyTxt('0xa1DD6C528882Dc19EcCbC967F50bBC121A29630e')">Pool: 0xa1DD...630e ⎘</div>
-      <div class="addr-chip" onclick="copyTxt('0x676cCf34C191a9D6EFE4B265b84877C619A559d0')">Treasury: 0x676c...59d0 ⎘</div>
+      <div class="addr-chip" onclick="copyTxt('0xa1DD6C528882Dc19EcCbC967F50bBC121A29630e')"><span class="d"></span>LP v2 Pool: 0xa1DD...630e ⎘</div>
+      <div class="addr-chip" onclick="copyTxt('0x676cCf34C191a9D6EFE4B265b84877C619A559d0')"><span class="d" style="background:var(--gold)"></span>Treasury & Donor: 0x676c...59d0 ⎘</div>
     </div>
   </div>
   <div class="stats-band">
@@ -422,7 +478,7 @@ canvas.price-chart{width:100%!important;height:160px!important}
       <div class="footer-grid">
         <div><div class="f-brand">⬡ EFC</div><div class="f-tagline" data-i18n="footer_tagline">Coin is life, and life is coin. Building a world where every person can thrive through blockchain technology.</div></div>
         <div><div class="f-col-t">DApp</div><div class="f-link" onclick="goPage('dashboard')">Dashboard</div><div class="f-link" onclick="goPage('wallet')">Wallet</div><div class="f-link" onclick="goPage('staking')">Staking</div><div class="f-link" onclick="goPage('portfolio')">Portfolio</div></div>
-        <div><div class="f-col-t">Community</div><a class="f-link" href="https://x.com/efikcoineternal" target="_blank">X (Twitter)</a><a class="f-link" href="https://t.me/efikcoinofficialecosystem" target="_blank">Telegram</a><a class="f-link" href="https://chat.whatsapp.com/Fb2tng6Ay2TE8FiRdJIQPG" target="_blank">WhatsApp</a><a class="f-link" href="https://efikcoineternalv.github.io/Charity-Empowerment/" target="_blank">Charity</a></div>
+        <div><div class="f-col-t">Community</div><a class="f-link" href="https://x.com/efikcoineternal" target="_blank">X (Twitter)</a><a class="f-link" href="https://t.me/efikcoinofficialecosystem" target="_blank">Telegram</a><a class="f-link" href="https://chat.whatsapp.com/Fb2tng6Ay2TE8FiRdJIQPG" target="_blank">WhatsApp</a><a class="f-link" href="https://charityempowerment.netlify.app/" target="_blank">Charity</a></div>
         <div><div class="f-col-t">Resources</div><a class="f-link" href="https://bscscan.com/token/0x677Ce9CBa67f7484ea951a12897CE780cFd8fED1" target="_blank">BSCScan</a><a class="f-link" href="https://pancakeswap.finance/swap?outputCurrency=0x677Ce9CBa67f7484ea951a12897CE780cFd8fED1" target="_blank">PancakeSwap</a><div class="f-link" onclick="goPage('settings')">Settings</div></div>
       </div>
       <div class="f-copy" data-i18n="footer_copy">© 2025 Efikcoin Eternal Ecosystem · Built for Humanity 🕊️</div>
@@ -672,8 +728,8 @@ canvas.price-chart{width:100%!important;height:160px!important}
     <div class="panel-hdr"><div class="panel-t">Pool Stats</div></div>
     <div class="tok-row"><span class="tok-lbl">Total EFC Staked</span><span class="tok-val" id="pool-total">—</span></div>
     <div class="tok-row"><span class="tok-lbl">Pool APY</span><span class="tok-val" id="pool-apy">—</span></div>
-    <div class="tok-row"><span class="tok-lbl">Treasury Wallet</span><span class="tok-val" style="font-size:.68rem">0x676c...59d0</span></div>
-    <div class="tok-row"><span class="tok-lbl">Pool Contract</span><a href="https://bscscan.com/address/0xa1DD6C528882Dc19EcCbC967F50bBC121A29630e" target="_blank" class="tok-val" style="font-size:.68rem;color:var(--blue)">0xa1DD...630e ↗</a></div>
+    <div class="tok-row"><span class="tok-lbl">Treasury & Donor Wallet</span><span class="tok-val" style="font-size:.68rem">0x676c...59d0</span></div>
+    <div class="tok-row"><span class="tok-lbl">LP v2 Pool Contract</span><a href="https://bscscan.com/address/0xa1DD6C528882Dc19EcCbC967F50bBC121A29630e" target="_blank" class="tok-val" style="font-size:.68rem;color:var(--blue)">0xa1DD...630e ↗</a></div>
   </div>
 </div>
 
@@ -725,7 +781,7 @@ canvas.price-chart{width:100%!important;height:160px!important}
     <div class="flex gap-8" style="flex-wrap:wrap">
       <a class="btn-o" href="https://bscscan.com/token/0x677Ce9CBa67f7484ea951a12897CE780cFd8fED1" target="_blank">BSCScan ↗</a>
       <a class="btn-o" href="https://pancakeswap.finance/swap?outputCurrency=0x677Ce9CBa67f7484ea951a12897CE780cFd8fED1" target="_blank">PancakeSwap ↗</a>
-      <a class="btn-o" href="https://efikcoineternalv.github.io/Charity-Empowerment/" target="_blank">Charity Portal ↗</a>
+      <a class="btn-o" href="https://charityempowerment.netlify.app/" target="_blank">Charity Portal ↗</a>
     </div>
   </div>
 </div>
@@ -822,7 +878,7 @@ canvas.price-chart{width:100%!important;height:160px!important}
     <div class="flex gap-8" style="flex-wrap:wrap">
       <a class="btn-o" href="https://bscscan.com/token/0x677Ce9CBa67f7484ea951a12897CE780cFd8fED1" target="_blank">BSCScan ↗</a>
       <a class="btn-o" href="https://pancakeswap.finance/swap?outputCurrency=0x677Ce9CBa67f7484ea951a12897CE780cFd8fED1" target="_blank">PancakeSwap ↗</a>
-      <a class="btn-o" href="https://efikcoineternalv.github.io/Charity-Empowerment/" target="_blank">Charity ↗</a>
+      <a class="btn-o" href="https://charityempowerment.netlify.app/" target="_blank">Charity ↗</a>
     </div>
   </div>
 </div>
@@ -1864,6 +1920,157 @@ function applyLang(code){
     [...sel.options].forEach(o=>{if(o.value===code)o.selected=true;});
   });
 }
+
+/* ════════════════════════════════════
+   AUTH — Login / Register
+════════════════════════════════════ */
+let authMode='login'; // 'login' or 'register'
+
+function switchAuthMode(mode){
+  authMode=mode;
+  const regFields=document.getElementById('auth-reg-fields');
+  const title=document.getElementById('auth-title');
+  const sub=document.getElementById('auth-sub');
+  const btn=document.getElementById('auth-submit-btn');
+  const tabL=document.getElementById('auth-tab-login');
+  const tabR=document.getElementById('auth-tab-register');
+  if(mode==='register'){
+    regFields.style.display='block';
+    title.textContent='Create EFC Account';
+    sub.textContent='Join the global EFC community. Your account links to your profile and inbox.';
+    btn.textContent='Create Account →';
+    tabL.classList.remove('active');tabR.classList.add('active');
+  } else {
+    regFields.style.display='none';
+    title.textContent='Sign In to EFC Wallet';
+    sub.textContent='Access your profile, inbox, and community features.';
+    btn.textContent='Sign In →';
+    tabL.classList.add('active');tabR.classList.remove('active');
+  }
+  document.getElementById('auth-err').style.display='none';
+}
+
+function togglePassVis(){
+  const inp=document.getElementById('auth-pass');
+  const eye=document.getElementById('auth-eye');
+  if(inp.type==='password'){inp.type='text';eye.textContent='🙈';}
+  else{inp.type='password';eye.textContent='👁';}
+}
+
+async function submitAuth(){
+  const email=document.getElementById('auth-email').value.trim();
+  const pass=document.getElementById('auth-pass').value;
+  const errEl=document.getElementById('auth-err');
+  errEl.style.display='none';
+  if(!email||!email.includes('@')){showAuthErr('Enter a valid email address');return;}
+  if(pass.length<6){showAuthErr('Password must be at least 6 characters');return;}
+  const btn=document.getElementById('auth-submit-btn');
+  btn.textContent='⌛ Please wait...';btn.disabled=true;
+  try{
+    const auth=window.__auth;
+    if(!auth){showAuthErr('Auth service unavailable — check internet connection');btn.textContent=authMode==='login'?'Sign In →':'Create Account →';btn.disabled=false;return;}
+    if(authMode==='register'){
+      const name=document.getElementById('auth-name').value.trim();
+      const country=document.getElementById('auth-country').value.trim();
+      if(!name){showAuthErr('Enter your full name');btn.textContent='Create Account →';btn.disabled=false;return;}
+      const {createUserWithEmailAndPassword}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+      const cred=await createUserWithEmailAndPassword(auth,email,pass);
+      // Save to Firestore clients collection
+      const ready=await waitFB();
+      if(ready){
+        const {db,doc,setDoc}=fb();
+        const id='EFC-'+Math.random().toString(36).substr(2,6).toUpperCase();
+        await setDoc(doc(db,'clients',id),{
+          id,name,email,country,wallet:userAddr||'',walletLower:(userAddr||'').toLowerCase(),
+          source:'registration',joined:new Date().toISOString(),lastBal:'0',lastStk:'0',
+          blocked:false,notifications:[],uid:cred.user.uid
+        }).catch(()=>{});
+        localStorage.setItem('efc_pid',id);
+      }
+      onAuthSuccess(cred.user,'Welcome to EFC, '+name+'! Account created.');
+    } else {
+      const {signInWithEmailAndPassword}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+      const cred=await signInWithEmailAndPassword(auth,email,pass);
+      // Find matching client profile
+      const ready=await waitFB();
+      if(ready){
+        const {db,collection,query,where,getDocs}=fb();
+        const q=query(collection(db,'clients'),where('uid','==',cred.user.uid));
+        const snap=await getDocs(q);
+        if(!snap.empty) localStorage.setItem('efc_pid',snap.docs[0].data().id);
+      }
+      onAuthSuccess(cred.user,'Welcome back!');
+    }
+  }catch(e){
+    const msgs={
+      'auth/email-already-in-use':'This email is already registered. Sign in instead.',
+      'auth/user-not-found':'No account found with this email. Register first.',
+      'auth/wrong-password':'Incorrect password. Try again or reset it.',
+      'auth/invalid-email':'Invalid email address format.',
+      'auth/weak-password':'Password is too weak — use at least 6 characters.',
+      'auth/too-many-requests':'Too many attempts. Please wait a moment.',
+      'auth/invalid-credential':'Email or password is incorrect.',
+    };
+    showAuthErr(msgs[e.code]||e.message);
+  }
+  btn.textContent=authMode==='login'?'Sign In →':'Create Account →';btn.disabled=false;
+}
+
+function showAuthErr(msg){
+  const el=document.getElementById('auth-err');el.textContent=msg;el.style.display='block';
+}
+
+function onAuthSuccess(user,msg){
+  toast('✓ '+msg,'ok');
+  document.getElementById('auth-user-email').textContent=user.email;
+  document.getElementById('auth-signed-in').style.display='block';
+  document.getElementById('auth-btn').textContent='👤 '+user.email.split('@')[0];
+  document.getElementById('auth-btn').style.color='var(--green)';
+  document.getElementById('auth-btn').style.borderColor='rgba(61,214,140,.3)';
+  document.getElementById('auth-email').value='';
+  document.getElementById('auth-pass').value='';
+  document.getElementById('auth-err').style.display='none';
+  closeM('m-auth');
+  loadClientProfile();
+}
+
+async function signOutUser(){
+  try{
+    const {signOut}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    await signOut(window.__auth);
+    document.getElementById('auth-btn').textContent='👤 Sign In';
+    document.getElementById('auth-btn').style.color='var(--muted)';
+    document.getElementById('auth-btn').style.borderColor='var(--bdr2)';
+    document.getElementById('auth-signed-in').style.display='none';
+    document.getElementById('cl-profile').style.display='none';
+    document.getElementById('cl-reg-form').style.display='block';
+    localStorage.removeItem('efc_pid');
+    toast('Signed out','in');
+    closeM('m-auth');
+  }catch(e){toast('Sign out failed: '+e.message,'er');}
+}
+
+async function forgotPassword(){
+  const email=document.getElementById('auth-email').value.trim();
+  if(!email||!email.includes('@')){showAuthErr('Enter your email address above first');return;}
+  try{
+    const {sendPasswordResetEmail}=await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js');
+    await sendPasswordResetEmail(window.__auth,email);
+    toast('Password reset email sent to '+email,'ok');
+    document.getElementById('auth-err').style.display='none';
+  }catch(e){showAuthErr('Could not send reset email: '+e.message);}
+}
+
+// Restore auth state on page load
+window.addEventListener('auth-changed',e=>{
+  const user=e.detail;
+  if(user){
+    document.getElementById('auth-btn').textContent='👤 '+user.email.split('@')[0];
+    document.getElementById('auth-btn').style.color='var(--green)';
+    document.getElementById('auth-signed-in').style.display='block';
+    document.getElementById('auth-user-email').textContent=user.email;
+  }
+});
 
 /* ── INIT ── */
 document.addEventListener('DOMContentLoaded',()=>{
